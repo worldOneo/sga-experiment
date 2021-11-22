@@ -1,0 +1,22 @@
+version: '3.7'
+
+services:
+  postgres:
+    image: postgres:14.1-alpine3.14
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=123456
+    ports:
+      - 5432:5432
+  mongo:
+    image: mongo:5.0.4-focal
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=mongo
+      - MONGO_INITDB_ROOT_PASSWORD=123456
+    ports:
+      - 27017:27017
+  scylla:
+    image: scylladb/scylla:4.5.1
+    command: --smp 1 --memory 2G
+    ports:
+      - 9042:9042
