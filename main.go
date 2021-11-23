@@ -22,7 +22,12 @@ func main() {
 	if err != nil {
 		log.Fatalf("SQL %v", err)
 	}
+	mongo, err := NewMongo()
+	if err != nil {
+		log.Fatalf("Mongo %v", err)
+	}
 	addAdapter("/sql", sql, r)
+	addAdapter("/mongo", mongo, r)
 	http.ListenAndServe("localhost:8080", r)
 }
 

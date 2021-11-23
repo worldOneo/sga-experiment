@@ -9,7 +9,7 @@ type TodoNvm interface {
 }
 
 type Todo struct {
-	Id   int64  `json:"id,omitempty"`
+	Id   string `json:"id,omitempty"`
 	Head string `json:"head,omitempty"`
 	Desc string `json:"desc,omitempty"`
 }

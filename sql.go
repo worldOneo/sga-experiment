@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"fmt"
+	"strconv"
 
 	_ "github.com/lib/pq"
 )
@@ -15,7 +16,7 @@ const (
 	dbname   = "postgres"
 )
 
-const createTable = `CREATE TABLE IF NOT EXIST public.todo
+const createTable = `CREATE TABLE IF NOT EXISTS public.todo
 (
 		id bigserial,
     head character varying(1024),
@@ -40,9 +41,9 @@ func NewSQL() (TodoNvm, error) {
 	if err != nil {
 		return nil, err
 	}
-	err = db.Ping()
+	_, err = db.Exec(createTable)
 	if err != nil {
-		return nil, fmt.Errorf("ping: %v", err)
+		return nil, fmt.Errorf("create: %v", err)
 	}
 	return &PostgresData{db}, nil
 }
@@ -57,7 +58,7 @@ func (P *PostgresData) Save(todo *Todo) error {
 	if err != nil {
 		return err
 	}
-	todo.Id = id
+	todo.Id = strconv.FormatInt(id, 10)
 	return nil
 }
 
@@ -84,16 +85,17 @@ func (P *PostgresData) Get() ([]Todo, error) {
 		if err != nil {
 			return nil, fmt.Errorf("scan: %v", err)
 		}
-		todos = append(todos, Todo{id, head, desc})
+		todos = append(todos, Todo{strconv.FormatInt(id, 10), head, desc})
 	}
 	return todos, nil
 }
 
 func (P *PostgresData) Update(todo Todo) error {
+	id, _ := strconv.ParseInt(todo.Id, 10, 64)
 	_, err := P.db.Exec(`INSERT INTO public.todo (id, head, "desc")
 		VALUES ($1, $2, $3)
 		ON CONFLICT(id) DO UPDATE SET head=$2, "desc"=$3`,
-		todo.Id,
+		id,
 		todo.Head,
 		todo.Desc,
 	)
