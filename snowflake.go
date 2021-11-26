@@ -24,7 +24,7 @@ const maxSequence = 1 << sequenceBits
 //   (T)ime     - 42bit timestamp in ms
 //   (I)D       - 10bit id defined for the current snowflake worker
 //   (S)equence - 11bit sequence which keeps incrementing to aviod double ids
-type Snowflake int64
+type Snowflake = int64
 
 // Generator used to generate snowflakes
 // holds it's sequence channel

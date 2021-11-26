@@ -26,8 +26,13 @@ func main() {
 	if err != nil {
 		log.Fatalf("Mongo %v", err)
 	}
+	scylla, err := NewScylla()
+	if err != nil {
+		log.Fatalf("Scylla %v", err)
+	}
 	addAdapter("/sql", sql, r)
 	addAdapter("/mongo", mongo, r)
+	addAdapter("/scylla", scylla, r)
 	http.ListenAndServe("localhost:8080", r)
 }
 
