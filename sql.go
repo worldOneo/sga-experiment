@@ -75,10 +75,11 @@ func (P *PostgresData) CreateList(list string) error {
 func (P *PostgresData) Save(list string, todo *Todo) error {
 	var id int64
 	err := P.db.QueryRow(
-		`INSERT INTO public.todo (head, "desc")
-		VALUES ($1, $2) RETURNING id`,
+		`INSERT INTO public.todo (head, "desc", list_id)
+		VALUES ($1, $2, (SELECT id FROM public.lists WHERE name=$3)) RETURNING id`,
 		todo.Head,
-		todo.Desc).Scan(&id)
+		todo.Desc,
+		list).Scan(&id)
 	if err != nil {
 		return err
 	}
@@ -95,7 +96,9 @@ func (P *PostgresData) Delete(list string, todo Todo) error {
 }
 
 func (P *PostgresData) Get(list string) ([]Todo, error) {
-	res, err := P.db.Query(`SELECT id,head,"desc" FROM public.todo;`)
+	res, err := P.db.Query(`SELECT public.todo.id,head,"desc" FROM public.todo
+		INNER JOIN public.lists ON public.lists.id=public.todo.list_id
+		WHERE public.lists.name=$1;`, list)
 	todos := []Todo{}
 	if err != nil {
 		return nil, err
@@ -116,9 +119,7 @@ func (P *PostgresData) Get(list string) ([]Todo, error) {
 
 func (P *PostgresData) Update(list string, todo Todo) error {
 	id, _ := strconv.ParseInt(todo.Id, 10, 64)
-	_, err := P.db.Exec(`INSERT INTO public.todo (id, head, "desc")
-		VALUES ($1, $2, $3)
-		ON CONFLICT(id) DO UPDATE SET head=$2, "desc"=$3`,
+	_, err := P.db.Exec(`UPDATE public.todo SET head=$2, "desc"=$3 WHERE id=$1`,
 		id,
 		todo.Head,
 		todo.Desc,
