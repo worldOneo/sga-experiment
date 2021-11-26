@@ -41,82 +41,103 @@ type StatusMessage struct {
 
 func addAdapter(name string, adapter TodoNvm, router chi.Router) {
 	router.Route(name, func(r chi.Router) {
-		r.Get("/todo", func(rw http.ResponseWriter, r *http.Request) {
-			todos, err := adapter.Get()
+		r.Get("/todo/{list}", func(rw http.ResponseWriter, r *http.Request) {
+			list := chi.URLParam(r, "list")
+			todos, err := adapter.Get(list)
 			if err != nil {
 				log.Printf("Get: %v", err)
 				code(rw, http.StatusInternalServerError)
 				return
 			}
-			rw.Header().Add("Content-Type", "application/json")
-			rw.WriteHeader(http.StatusOK)
-			write(rw, &todos)
+			write(rw, &todos, http.StatusOK)
 		})
 
-		r.Post("/todo", func(rw http.ResponseWriter, r *http.Request) {
+		r.Post("/todo/{list}", func(rw http.ResponseWriter, r *http.Request) {
+			list := chi.URLParam(r, "list")
 			var todo Todo
 			err := json.NewDecoder(r.Body).Decode(&todo)
 			if err != nil {
 				code(rw, http.StatusBadRequest)
 				return
 			}
-			err = adapter.Save(&todo)
+			err = adapter.Save(list, &todo)
 			if err != nil {
 				log.Printf("Save: %v", err)
 				code(rw, http.StatusInternalServerError)
 				return
 			}
-			rw.Header().Add("Content-Type", "application/json")
-			rw.WriteHeader(http.StatusOK)
-			write(rw, &todo)
+			write(rw, &todo, http.StatusOK)
 		})
 
-		r.Delete("/todo", func(rw http.ResponseWriter, r *http.Request) {
+		r.Delete("/todo/{list}", func(rw http.ResponseWriter, r *http.Request) {
+			list := chi.URLParam(r, "list")
 			var todo Todo
 			err := json.NewDecoder(r.Body).Decode(&todo)
 			if err != nil {
 				code(rw, http.StatusBadRequest)
 				return
 			}
-			err = adapter.Delete(todo)
+			err = adapter.Delete(list, todo)
 			if err != nil {
 				log.Printf("Delete: %v", err)
 				code(rw, http.StatusInternalServerError)
 				return
 			}
-			rw.Header().Add("Content-Type", "application/json")
-			rw.WriteHeader(http.StatusOK)
-			write(rw, &todo)
+			write(rw, &todo, http.StatusOK)
 		})
 
-		r.Patch("/todo", func(rw http.ResponseWriter, r *http.Request) {
+		r.Patch("/todo/{list}", func(rw http.ResponseWriter, r *http.Request) {
+			list := chi.URLParam(r, "list")
 			var todo Todo
 			err := json.NewDecoder(r.Body).Decode(&todo)
 			if err != nil {
 				code(rw, http.StatusBadRequest)
 				return
 			}
-			err = adapter.Update(todo)
+			err = adapter.Update(list, todo)
 			if err != nil {
 				log.Printf("Patch: %v", err)
 				code(rw, http.StatusInternalServerError)
 				return
 			}
-			rw.Header().Add("Content-Type", "application/json")
-			rw.WriteHeader(http.StatusOK)
-			write(rw, &todo)
+			write(rw, &todo, http.StatusOK)
+		})
+
+		r.Put("/todo/{list}", func(rw http.ResponseWriter, r *http.Request) {
+			list := chi.URLParam(r, "list")
+			err := adapter.CreateList(list)
+			if err != nil {
+				log.Printf("Put: %v", err)
+				code(rw, http.StatusInternalServerError)
+				return
+			}
+			code(rw, http.StatusOK)
+		})
+
+		r.Options("/todo/{list}/{name}", func(rw http.ResponseWriter, r *http.Request) {
+			list := chi.URLParam(r, "list")
+			name := chi.URLParam(r, "name")
+			err := adapter.RenameList(list, name)
+
+			if err != nil {
+				log.Printf("Options: %v", err)
+				code(rw, http.StatusInternalServerError)
+				return
+			}
+			code(rw, http.StatusOK)
 		})
 	})
 }
 
-func write(rw http.ResponseWriter, v interface{}) {
+func write(rw http.ResponseWriter, v interface{}, code int) {
+	rw.Header().Add("Content-Type", "application/json")
+	rw.WriteHeader(code)
 	json.NewEncoder(rw).Encode(v)
 }
 
 func code(rw http.ResponseWriter, statusCode int) {
-	rw.WriteHeader(statusCode)
 	write(rw, &StatusMessage{
 		Status:  statusCode,
 		Message: http.StatusText(statusCode),
-	})
+	}, statusCode)
 }

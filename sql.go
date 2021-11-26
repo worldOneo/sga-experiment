@@ -16,15 +16,23 @@ const (
 	dbname   = "postgres"
 )
 
-const createTable = `CREATE TABLE IF NOT EXISTS public.todo
+const createTable = `
+CREATE TABLE IF NOT EXISTS public.lists
 (
 		id bigserial,
+    name character varying(1024) UNIQUE,
+    PRIMARY KEY (id)
+) TABLESPACE pg_default;
+
+CREATE TABLE IF NOT EXISTS public.todo
+(
+		id bigserial,
+		list_id bigint,
     head character varying(1024),
     "desc" character varying(1024),
-    PRIMARY KEY (id)
-)
-
-TABLESPACE pg_default;
+    PRIMARY KEY (id),
+		CONSTRAINT fk_list FOREIGN KEY(list_id) REFERENCES public.lists(id)
+) TABLESPACE pg_default;
 
 ALTER TABLE public.todo
     OWNER to postgres;`
@@ -48,7 +56,23 @@ func NewSQL() (TodoNvm, error) {
 	return &PostgresData{db}, nil
 }
 
-func (P *PostgresData) Save(todo *Todo) error {
+func (P *PostgresData) RenameList(list string, name string) error {
+	_, err := P.db.Exec(
+		`UPDATE public.lists SET name = $1 WHERE name = $2`,
+		name,
+		list)
+	return err
+}
+
+func (P *PostgresData) CreateList(list string) error {
+	_, err := P.db.Exec(
+		`INSERT INTO public.lists (name)
+		VALUES ($1)`,
+		list)
+	return err
+}
+
+func (P *PostgresData) Save(list string, todo *Todo) error {
 	var id int64
 	err := P.db.QueryRow(
 		`INSERT INTO public.todo (head, "desc")
@@ -62,7 +86,7 @@ func (P *PostgresData) Save(todo *Todo) error {
 	return nil
 }
 
-func (P *PostgresData) Delete(todo Todo) error {
+func (P *PostgresData) Delete(list string, todo Todo) error {
 	_, err := P.db.Exec(`DELETE FROM public.todo WHERE id=$1;`, todo.Id)
 	if err != nil {
 		return err
@@ -70,7 +94,7 @@ func (P *PostgresData) Delete(todo Todo) error {
 	return nil
 }
 
-func (P *PostgresData) Get() ([]Todo, error) {
+func (P *PostgresData) Get(list string) ([]Todo, error) {
 	res, err := P.db.Query(`SELECT id,head,"desc" FROM public.todo;`)
 	todos := []Todo{}
 	if err != nil {
@@ -90,7 +114,7 @@ func (P *PostgresData) Get() ([]Todo, error) {
 	return todos, nil
 }
 
-func (P *PostgresData) Update(todo Todo) error {
+func (P *PostgresData) Update(list string, todo Todo) error {
 	id, _ := strconv.ParseInt(todo.Id, 10, 64)
 	_, err := P.db.Exec(`INSERT INTO public.todo (id, head, "desc")
 		VALUES ($1, $2, $3)
