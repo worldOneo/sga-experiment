@@ -114,7 +114,7 @@ func (P *PostgresData) Get(list string) ([]Todo, error) {
 		}
 		todos = append(todos, Todo{strconv.FormatInt(id, 10), head, desc})
 	}
-	return todos, nil
+	return todos, res.Close()
 }
 
 func (P *PostgresData) Update(list string, todo Todo) error {

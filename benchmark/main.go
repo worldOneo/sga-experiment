@@ -12,18 +12,13 @@ import (
 
 func main() {
 	client := &fasthttp.Client{}
-	sql := benchmarkDB("sql", client)
-	mongo := benchmarkDB("mongo", client)
-	scylla := benchmarkDB("scylla", client)
-	if err := writeStats("sql", sql); err != nil {
-		log.Printf("Failed to write SQL:", err)
-	}
-	if err := writeStats("mongo", mongo); err != nil {
-		log.Printf("Failed to write Mongo:", err)
-	}
-	if err := writeStats("Scylla", scylla); err != nil {
-		log.Printf("Failed to write Scylla:", err)
-	}
+	sql := benchmarkDB("sql", client, 100, 10)
+	//mongo := benchmarkDB("mongo", client, 100, 10)
+	scylla := benchmarkDB("scylla", client, 100, 10)
+
+	logWriteStats("sql", sql)
+	//logWriteStats("mongo", mongo)
+	logWriteStats("Scylla", scylla)
 }
 
 type Stat struct {
@@ -33,7 +28,7 @@ type Stat struct {
 
 type Stats []Stat
 
-func benchmarkDB(dbtype string, client *fasthttp.Client) Stats {
+func benchmarkDB(dbtype string, client *fasthttp.Client, workerN, requestPerWorker int) Stats {
 	endpoint := "http://127.0.0.1:8080/" + dbtype + "/todo/myTodo"
 	body := `
 	{
@@ -50,13 +45,13 @@ func benchmarkDB(dbtype string, client *fasthttp.Client) Stats {
 	}
 
 	stats := Stats{}
-	for kRequest := 0; kRequest < 2; kRequest++ {
+	for kRequest := 0; kRequest < 100; kRequest++ {
 		wg := &sync.WaitGroup{}
 		responses := make(chan Stat, 1_000)
-		for workers := 0; workers < 100; workers++ {
+		for workers := 0; workers < workerN; workers++ {
 			wg.Add(1)
 			go func(worker int) {
-				for i := 0; i < 10; i++ {
+				for i := 0; i < requestPerWorker; i++ {
 					req := fasthttp.AcquireRequest()
 					res := fasthttp.AcquireResponse()
 
@@ -64,7 +59,7 @@ func benchmarkDB(dbtype string, client *fasthttp.Client) Stats {
 					req.Header.SetMethod(fasthttp.MethodPost)
 					req.Header.SetContentType("application/json")
 					req.AppendBody([]byte(body))
-					
+
 					statErr := false
 					before := time.Now()
 					err := client.Do(req, res)
@@ -72,8 +67,7 @@ func benchmarkDB(dbtype string, client *fasthttp.Client) Stats {
 						statErr = true
 						log.Printf("Err: %v", err)
 					}
-					log.Printf("%d done: %d, %s", (i+1)*worker, res.StatusCode(), string(res.Body()))
-					responses <- Stat{statErr, time.Since(before).Nanoseconds()}
+					responses <- Stat{statErr || res.StatusCode() != 200, time.Since(before).Nanoseconds()}
 					fasthttp.ReleaseRequest(req)
 					fasthttp.ReleaseResponse(res)
 				}
@@ -91,6 +85,12 @@ func benchmarkDB(dbtype string, client *fasthttp.Client) Stats {
 		stats = append(stats, newStats...)
 	}
 	return stats
+}
+
+func logWriteStats(dbname string, stats Stats) {
+	if err := writeStats(dbname, stats); err != nil {
+		log.Printf("Failed to write %s: %v", dbname, err)
+	}
 }
 
 func writeStats(dbname string, stats Stats) error {
