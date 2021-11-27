@@ -29,7 +29,7 @@ func NewMongo() (TodoNvm, error) {
 func (M *MongoData) CreateList(list string) error {
 	_, err := M.collection.InsertOne(context.TODO(),
 		bson.D{{"name", list},
-			{"todos", []Todo{}}})
+			{"todos", bson.M{}}})
 	return err
 }
 
@@ -43,13 +43,12 @@ func (M *MongoData) RenameList(list string, name string) error {
 func (M *MongoData) Save(list string, todo *Todo) error {
 	id := primitive.NewObjectID()
 	doc := bson.M{
-		"_id":  id,
 		"head": todo.Head,
 		"desc": todo.Desc,
 	}
 	_, err := M.collection.UpdateOne(context.TODO(),
 		bson.D{{"name", list}},
-		bson.M{"$push": bson.M{"todos": doc}})
+		bson.M{"$set": bson.M{"todos." + id.Hex(): doc}})
 	todo.Id = id.Hex()
 	return err
 }
@@ -67,11 +66,11 @@ func (M *MongoData) Get(list string) ([]Todo, error) {
 			return nil, fmt.Errorf("decode: ", err)
 		}
 		fmt.Printf("%#v", document)
-		list := document["todos"].(primitive.A)
-		for _, todo := range list {
+		list := document["todos"].(primitive.M)
+		for id, todo := range list {
 			todo := todo.(primitive.M)
 			todos = append(todos, Todo{
-				todo["_id"].(primitive.ObjectID).Hex(),
+				id,
 				todo["head"].(string),
 				todo["desc"].(string),
 			})
@@ -106,7 +105,7 @@ func (M *MongoData) Delete(list string, todo Todo) error {
 	}
 	_, err = M.collection.UpdateOne(context.TODO(),
 		bson.M{"name": list},
-		bson.M{"$pull": bson.M{"todos": bson.M{"_id": id}}})
+		bson.M{"$unset": bson.M{"todos": bson.E{id.String(), ""}}})
 	return err
 }
 

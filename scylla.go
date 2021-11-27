@@ -7,10 +7,8 @@ import (
 	"github.com/gocql/gocql"
 )
 
-
 type ScyllaData struct {
-	session   *gocql.Session
-	generator *Generator
+	session *gocql.Session
 }
 
 func NewScylla() (TodoNvm, error) {
@@ -22,16 +20,15 @@ func NewScylla() (TodoNvm, error) {
 	}
 
 	createTodos := session.Query(`CREATE TABLE IF NOT EXISTS todos.todos (
-			list text,
-			id bigint,
-			head text,
-			"desc" text,
-			PRIMARY KEY(list, id) );`)
-	err = createTodos.Exec()
-	if err != nil {
+		list text,
+		id UUID,
+		head text,
+		"desc" text,
+		PRIMARY KEY(list, id) );`)
+	if err = createTodos.Exec(); err != nil {
 		return nil, err
 	}
-	return &ScyllaData{session, NewGenerator(0)}, nil
+	return &ScyllaData{session}, nil
 }
 
 func (S *ScyllaData) CreateList(list string) error {
@@ -45,8 +42,8 @@ func (S *ScyllaData) RenameList(list string, name string) error {
 
 func (S *ScyllaData) Save(list string, todo *Todo) error {
 	query := S.session.Query(`INSERT INTO todos.todos (list, id, head, "desc") VALUES(?,?,?,?);`)
-	id := S.generator.GenSnowflake()
-	todo.Id = strconv.FormatInt(id, 10)
+	id, _ := gocql.RandomUUID()
+	todo.Id = id.String()
 	return query.Bind(list, id, todo.Head, todo.Desc).Exec()
 }
 
@@ -68,11 +65,11 @@ func (S *ScyllaData) Get(list string) ([]Todo, error) {
 	}
 	iter := query.Iter()
 	todos := []Todo{}
-	var id int64
+	var id gocql.UUID
 	var head string
 	var desc string
 	for iter.Scan(&id, &head, &desc) {
-		todos = append(todos, Todo{strconv.FormatInt(id, 10), head, desc})
+		todos = append(todos, Todo{id.String(), head, desc})
 	}
 	return todos, iter.Close()
 }
