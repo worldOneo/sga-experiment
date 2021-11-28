@@ -1,4 +1,4 @@
-package main
+package todo
 
 type TodoNvm interface {
 	CreateList(list string) error

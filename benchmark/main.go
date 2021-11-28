@@ -1,24 +1,25 @@
 package main
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
 	"log"
 	"os"
 	"sync"
 	"time"
 
-	"github.com/valyala/fasthttp"
+	todo "github.com/worldOneo/database-demos"
 )
 
 func main() {
-	client := &fasthttp.Client{}
-	sql := benchmarkDB("sql", client, 100, 10)
+	sqlNvm, _ := todo.NewSQL()
+	mongoNvm, _ := todo.NewMongo()
+	scyllaNvm, _ := todo.NewScylla()
+
+	sql := benchmarkDB(sqlNvm, 100, 10)
 	logWriteStats("sql", sql)
-	mongo := benchmarkDB("mongo", client, 100, 10)
+	mongo := benchmarkDB(mongoNvm, 100, 10)
 	logWriteStats("mongo", mongo)
-	scylla := benchmarkDB("scylla", client, 100, 10)
+	scylla := benchmarkDB(scyllaNvm, 100, 10)
 	logWriteStats("Scylla", scylla)
 }
 
@@ -39,29 +40,9 @@ type Todo struct {
 	Desc string `json:"desc,omitempty"`
 }
 
-func benchmarkDB(dbtype string, client *fasthttp.Client, workerN, requestPerWorker int) Stats {
-	endpoint := "http://127.0.0.1:8080/" + dbtype + "/todo/myTodo"
-	writeBody := `
-	{
-    "head": "Mein Todo",
-    "desc": "Meine Beschreibung"
-	}
-	`
-	updateBody := `
-	{
-		"id": "%s",
-    "head": "Mein neues Todo",
-    "desc": "Meine neue Beschreibung"
-	}
-	`
+func benchmarkDB(todonvm todo.TodoNvm, workerN, requestPerWorker int) Stats {
 
-	req := fasthttp.AcquireRequest()
-	req.SetRequestURI(endpoint)
-	req.Header.SetMethod(fasthttp.MethodPut)
-	err := client.Do(req, nil)
-	if err != nil {
-		log.Fatalf("Setup todo-list for '%s': %v", dbtype, err)
-	}
+	todonvm.CreateList("myTodo")
 
 	stats := Stats{
 		Insert: []Stat{},
@@ -69,8 +50,27 @@ func benchmarkDB(dbtype string, client *fasthttp.Client, workerN, requestPerWork
 		Delete: []Stat{},
 	}
 
+	log.Printf("Warming up")
+	warmup := &sync.WaitGroup{}
+	for kRequest := 0; kRequest < 1000; kRequest++ {
+		warmup.Add(1)
+		go func() {
+			todo := todo.Todo{"", "Mein Todo", "Meine Beschreibung"}
+			for i := 0; i < requestPerWorker; i++ {
+				err := todonvm.Save("myTodo", &todo)
+				if err != nil {
+					log.Printf("Err: %v", err)
+				}
+			}
+			warmup.Done()
+		}()
+	}
+	warmup.Wait()
+	log.Printf("Warmed up")
+
 	ids := make([]string, 100*requestPerWorker*workerN)
 
+	log.Printf("Inserting")
 	// Insert
 	for kRequest := 0; kRequest < 100; kRequest++ {
 		wg := &sync.WaitGroup{}
@@ -78,36 +78,22 @@ func benchmarkDB(dbtype string, client *fasthttp.Client, workerN, requestPerWork
 		for workers := 0; workers < workerN; workers++ {
 			wg.Add(1)
 			go func(worker int) {
-				var todo Todo
+				todo := todo.Todo{"", "Mein Todo", "Meine Beschreibung"}
 				for i := 0; i < requestPerWorker; i++ {
 					field := kRequest*worker*requestPerWorker + worker*requestPerWorker + i
-					req := fasthttp.AcquireRequest()
-					res := fasthttp.AcquireResponse()
-
-					req.SetRequestURI(endpoint)
-					req.Header.SetMethod(fasthttp.MethodPost)
-					req.Header.SetContentType("application/json")
-					req.AppendBody([]byte(writeBody))
-
-					statErr := false
 					before := time.Now()
-					err := client.Do(req, res)
+					err := todonvm.Save("myTodo", &todo)
+					responses <- Stat{err != nil, time.Since(before).Nanoseconds()}
+					ids[field] = todo.Id
 					if err != nil {
-						statErr = true
 						log.Printf("Err: %v", err)
 					}
-					if res.StatusCode() == 200 {
-						json.NewDecoder(bytes.NewReader(res.Body())).Decode(&todo)
-						ids[field] = todo.Id
-					}
-					responses <- Stat{statErr || res.StatusCode() != 200, time.Since(before).Nanoseconds()}
-					fasthttp.ReleaseRequest(req)
-					fasthttp.ReleaseResponse(res)
 				}
 				wg.Done()
 			}(workers)
 		}
 		wg.Wait()
+		log.Printf("Inserted")
 		close(responses)
 		newStats := make([]Stat, requestPerWorker*workerN)
 		i := 0
@@ -118,6 +104,7 @@ func benchmarkDB(dbtype string, client *fasthttp.Client, workerN, requestPerWork
 		stats.Insert = append(stats.Insert, newStats...)
 	}
 
+	log.Printf("Writing")
 	// Write
 	for kRequest := 0; kRequest < 100; kRequest++ {
 		wg := &sync.WaitGroup{}
@@ -125,32 +112,22 @@ func benchmarkDB(dbtype string, client *fasthttp.Client, workerN, requestPerWork
 		for workers := 0; workers < workerN; workers++ {
 			wg.Add(1)
 			go func(worker int) {
+				todo := todo.Todo{"", "Mein neues Todo", "Meine neue Beschreibung"}
 				for i := 0; i < requestPerWorker; i++ {
 					field := kRequest*worker*requestPerWorker + worker*requestPerWorker + i
-					id := ids[field]
-					req := fasthttp.AcquireRequest()
-					res := fasthttp.AcquireResponse()
-
-					req.SetRequestURI(endpoint)
-					req.Header.SetMethod(fasthttp.MethodPatch)
-					req.Header.SetContentType("application/json")
-					req.AppendBody([]byte(fmt.Sprintf(updateBody, id)))
-
-					statErr := false
 					before := time.Now()
-					err := client.Do(req, res)
+					todo.Id = ids[field]
+					err := todonvm.Update("myTodo", todo)
+					responses <- Stat{err != nil, time.Since(before).Nanoseconds()}
 					if err != nil {
-						statErr = true
 						log.Printf("Err: %v", err)
 					}
-					responses <- Stat{statErr || res.StatusCode() != 200, time.Since(before).Nanoseconds()}
-					fasthttp.ReleaseRequest(req)
-					fasthttp.ReleaseResponse(res)
 				}
 				wg.Done()
 			}(workers)
 		}
 		wg.Wait()
+		log.Printf("Written")
 		close(responses)
 		newStats := make([]Stat, requestPerWorker*workerN)
 		i := 0
@@ -161,6 +138,7 @@ func benchmarkDB(dbtype string, client *fasthttp.Client, workerN, requestPerWork
 		stats.Update = append(stats.Update, newStats...)
 	}
 
+	log.Printf("Deleting")
 	// Delete
 	for kRequest := 0; kRequest < 100; kRequest++ {
 		wg := &sync.WaitGroup{}
@@ -168,32 +146,22 @@ func benchmarkDB(dbtype string, client *fasthttp.Client, workerN, requestPerWork
 		for workers := 0; workers < workerN; workers++ {
 			wg.Add(1)
 			go func(worker int) {
+				todo := todo.Todo{"", "Mein neues Todo", "Meine neue Beschreibung"}
 				for i := 0; i < requestPerWorker; i++ {
 					field := kRequest*worker*requestPerWorker + worker*requestPerWorker + i
-					id := ids[field]
-					req := fasthttp.AcquireRequest()
-					res := fasthttp.AcquireResponse()
-
-					req.SetRequestURI(endpoint)
-					req.Header.SetMethod(fasthttp.MethodDelete)
-					req.Header.SetContentType("application/json")
-					req.AppendBody([]byte(fmt.Sprintf(updateBody, id)))
-
-					statErr := false
 					before := time.Now()
-					err := client.Do(req, res)
+					todo.Id = ids[field]
+					err := todonvm.Delete("myTodo", todo)
+					responses <- Stat{err != nil, time.Since(before).Nanoseconds()}
 					if err != nil {
-						statErr = true
 						log.Printf("Err: %v", err)
 					}
-					responses <- Stat{statErr || res.StatusCode() != 200, time.Since(before).Nanoseconds()}
-					fasthttp.ReleaseRequest(req)
-					fasthttp.ReleaseResponse(res)
 				}
 				wg.Done()
 			}(workers)
 		}
 		wg.Wait()
+		log.Printf("Deleted")
 		close(responses)
 		newStats := make([]Stat, requestPerWorker*workerN)
 		i := 0
@@ -203,11 +171,13 @@ func benchmarkDB(dbtype string, client *fasthttp.Client, workerN, requestPerWork
 		}
 		stats.Delete = append(stats.Delete, newStats...)
 	}
+	log.Printf("Done")
 
 	return stats
 }
 
 func logWriteStats(dbname string, stats Stats) {
+	log.Printf("Writing %s.csv", dbname)
 	if err := writeStats(dbname, stats); err != nil {
 		log.Printf("Failed to write %s: %v", dbname, err)
 	}
