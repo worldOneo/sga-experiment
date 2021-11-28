@@ -10,12 +10,13 @@ def pt(y, q):
     return f"{round(y.quantile(q)/ms_ns, 2)}ms"
 
 
+plt.rcParams["figure.figsize"] = [7.00, 3.50]
+plt.rcParams["figure.autolayout"] = True
 for name in sys.argv[1:]:
-    plt.rcParams["figure.autolayout"] = True
     df = pd.read_csv(f"{name}", delimiter=",")
     x = df[df.columns[0]].values
     plots = len(df.columns)
-    plt.rcParams["figure.figsize"] = [7.00, 3.50*(plots//2)]
+    plt.figure(figsize=(7.00, 3.50*(plots//2)))
     for i in range(plots//2):
         fd = df[df.columns[i*2+2]]
         y = df[df.columns[i*2+1]]
@@ -30,3 +31,6 @@ for name in sys.argv[1:]:
         plt.ylabel("Time [ns]")
     plt.savefig(f"{name}.png", dpi=200, bbox_inches="tight")
     plt.clf()
+    plt.cla()
+    plt.figure().clear()
+    plt.close()
