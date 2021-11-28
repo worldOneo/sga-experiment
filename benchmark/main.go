@@ -13,12 +13,12 @@ import (
 func main() {
 	client := &fasthttp.Client{}
 	sql := benchmarkDB("sql", client, 100, 10)
-	//mongo := benchmarkDB("mongo", client, 100, 10)
-	//scylla := benchmarkDB("scylla", client, 100, 10)
+	mongo := benchmarkDB("mongo", client, 100, 10)
+	scylla := benchmarkDB("scylla", client, 100, 10)
 
 	logWriteStats("sql", sql)
-	//logWriteStats("mongo", mongo)
-	//logWriteStats("Scylla", scylla)
+	logWriteStats("mongo", mongo)
+	logWriteStats("Scylla", scylla)
 }
 
 type Stat struct {
@@ -47,7 +47,7 @@ func benchmarkDB(dbtype string, client *fasthttp.Client, workerN, requestPerWork
 	stats := Stats{}
 	for kRequest := 0; kRequest < 100; kRequest++ {
 		wg := &sync.WaitGroup{}
-		responses := make(chan Stat, 1_000)
+		responses := make(chan Stat, requestPerWorker*workerN)
 		for workers := 0; workers < workerN; workers++ {
 			wg.Add(1)
 			go func(worker int) {
@@ -76,7 +76,7 @@ func benchmarkDB(dbtype string, client *fasthttp.Client, workerN, requestPerWork
 		}
 		wg.Wait()
 		close(responses)
-		newStats := make(Stats, 1_000)
+		newStats := make(Stats, requestPerWorker*workerN)
 		i := 0
 		for stat := range responses {
 			newStats[i] = stat
