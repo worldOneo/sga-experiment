@@ -1,9 +1,6 @@
 package main
 
 import (
-	"fmt"
-	"strconv"
-
 	"github.com/gocql/gocql"
 )
 
@@ -50,11 +47,7 @@ func (S *ScyllaData) Save(list string, todo *Todo) error {
 
 func (S *ScyllaData) Delete(list string, todo Todo) error {
 	query := S.session.Query(`DELETE FROM todos.todos WHERE list = ? AND id = ?;`)
-	n, err := strconv.ParseInt(todo.Id, 10, 64)
-	if err != nil {
-		return fmt.Errorf("id: ", err)
-	}
-	return query.Bind(list, n).Exec()
+	return query.Bind(list, todo.Id).Exec()
 }
 
 func (S *ScyllaData) Get(list string) ([]Todo, error) {
@@ -76,7 +69,7 @@ func (S *ScyllaData) Get(list string) ([]Todo, error) {
 }
 
 func (S *ScyllaData) Update(list string, todo Todo) error {
-	query := S.session.Query(`UPDATE todos.todos SET "desc"=?,head=? WHERE list=? AND id=? IF EXISTS;`)
+	query := S.session.Query(`UPDATE todos.todos SET "desc"=?,head=? WHERE list=? AND id=?`)
 	return query.Bind(todo.Desc, todo.Head, list, todo.Id).Exec()
 }
 
