@@ -24,6 +24,6 @@ for name in sys.argv[1:]:
     plt.plot(x, y.rolling(10_000, min_periods=1).std())
     plt.figtext(
         0, 0, f"10%={pt(y,.1)} 50%={pt(y,.5)} 90%={pt(y,.9)} 99%={pt(y,.99)} 100%={pt(y,1)} F/S={round(fd[fd==True].count()/fd.count(), 2)}%")
-
+    plt.ylabel("Time [ns]")
     plt.savefig(f"{name}.png", dpi=200, bbox_inches="tight")
     plt.clf()

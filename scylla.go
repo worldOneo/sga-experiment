@@ -14,6 +14,7 @@ type ScyllaData struct {
 func NewScylla() (TodoNvm, error) {
 	cluster := gocql.NewCluster("localhost")
 	cluster.Keyspace = "todos"
+	cluster.NumConns = 100
 	session, err := cluster.CreateSession()
 	if err != nil {
 		return nil, err

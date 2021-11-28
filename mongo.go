@@ -11,70 +11,64 @@ import (
 )
 
 type MongoData struct {
-	db         *mongo.Client
-	collection *mongo.Collection
+	db             *mongo.Client
+	todoCollection *mongo.Collection
 }
 
 func NewMongo() (TodoNvm, error) {
 	db, err := mongo.Connect(context.TODO(), options.Client().ApplyURI("mongodb://mongo:123456@127.0.0.1:27017/"))
-	collection := db.Database("todos").Collection("todos")
-	unique := true
-	collection.Indexes().CreateOne(context.TODO(), mongo.IndexModel{
-		bson.D{{"name", 1}},
-		&options.IndexOptions{Unique: &unique},
+	if err != nil {
+		return nil, err
+	}
+	todoCollection := db.Database("todos").Collection("todos")
+	_, err = todoCollection.Indexes().CreateOne(context.TODO(), mongo.IndexModel{
+		bson.D{{"list", 1}},
+		&options.IndexOptions{},
 	})
-	return &MongoData{db, collection}, err
+	return &MongoData{db, todoCollection}, err
 }
 
 func (M *MongoData) CreateList(list string) error {
-	_, err := M.collection.InsertOne(context.TODO(),
-		bson.D{{"name", list},
-			{"todos", bson.M{}}})
-	return err
+	return nil
 }
 
 func (M *MongoData) RenameList(list string, name string) error {
-	_, err := M.collection.UpdateOne(context.TODO(),
-		bson.D{{"name", list}},
-		bson.M{"$set": bson.D{{"name", name}}})
+	_, err := M.todoCollection.UpdateMany(context.TODO(),
+		bson.D{{"list", list}},
+		bson.M{"$set": bson.D{{"list", name}}})
 	return err
 }
 
 func (M *MongoData) Save(list string, todo *Todo) error {
 	id := primitive.NewObjectID()
 	doc := bson.M{
+		"list": list,
 		"head": todo.Head,
 		"desc": todo.Desc,
 	}
-	_, err := M.collection.UpdateOne(context.TODO(),
-		bson.D{{"name", list}},
-		bson.M{"$set": bson.M{"todos." + id.Hex(): doc}})
+	_, err := M.todoCollection.InsertOne(context.TODO(), doc)
 	todo.Id = id.Hex()
 	return err
 }
 
 func (M *MongoData) Get(list string) ([]Todo, error) {
-	res, err := M.collection.Find(context.TODO(), bson.D{{"name", list}})
+	res, err := M.todoCollection.Find(context.TODO(), bson.D{{"list", list}})
 	if err != nil {
 		return nil, err
 	}
 	todos := []Todo{}
 	var document bson.M
+	defer res.Close(context.TODO())
 	for res.Next(context.TODO()) {
 		err := res.Decode(&document)
 		if err != nil {
-			return nil, fmt.Errorf("decode: ", err)
+			return nil, fmt.Errorf("decode: %v", err)
 		}
-		fmt.Printf("%#v", document)
-		list := document["todos"].(primitive.M)
-		for id, todo := range list {
-			todo := todo.(primitive.M)
-			todos = append(todos, Todo{
-				id,
-				todo["head"].(string),
-				todo["desc"].(string),
-			})
-		}
+		todos = append(todos, Todo{
+			document["_id"].(primitive.ObjectID).Hex(),
+			document["head"].(string),
+			document["desc"].(string),
+		})
 	}
 	return todos, nil
 }
@@ -85,14 +79,13 @@ func (M *MongoData) Update(list string, todo Todo) error {
 		return err
 	}
 	filter := bson.M{
-		"name":  bson.M{"$eq": list},
-		"todos": bson.M{"$elemMatch": bson.M{"_id": id}},
+		"_id": bson.M{"$eq": id},
 	}
-	_, err = M.collection.
+	_, err = M.todoCollection.
 		UpdateOne(context.TODO(), filter, bson.M{
 			"$set": bson.M{
-				"todos.$.head": todo.Head,
-				"todos.$.desc": todo.Desc,
+				"head": todo.Head,
+				"desc": todo.Desc,
 			},
 		})
 	return err
@@ -103,9 +96,7 @@ func (M *MongoData) Delete(list string, todo Todo) error {
 	if err != nil {
 		return err
 	}
-	_, err = M.collection.UpdateOne(context.TODO(),
-		bson.M{"name": list},
-		bson.M{"$unset": bson.M{"todos": bson.E{id.String(), ""}}})
+	_, err = M.todoCollection.DeleteOne(context.TODO(),	bson.M{"_id": bson.M{"$eq": id}})
 	return err
 }
 
