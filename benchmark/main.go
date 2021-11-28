@@ -12,13 +12,13 @@ import (
 
 func main() {
 	client := &fasthttp.Client{}
-	//sql := benchmarkDB("sql", client, 100, 10)
+	sql := benchmarkDB("sql", client, 100, 10)
 	//mongo := benchmarkDB("mongo", client, 100, 10)
-	scylla := benchmarkDB("scylla", client, 100, 10)
+	//scylla := benchmarkDB("scylla", client, 100, 10)
 
-	//logWriteStats("sql", sql)
+	logWriteStats("sql", sql)
 	//logWriteStats("mongo", mongo)
-	logWriteStats("Scylla", scylla)
+	//logWriteStats("Scylla", scylla)
 }
 
 type Stat struct {
